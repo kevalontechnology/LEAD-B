@@ -7,21 +7,30 @@ const DEFAULT_COLUMN_MAPPING = {
   'Company Name': 'title',
   Company: 'title',
   TitleName: 'title',
+  Name: 'title',
+  'Business Name': 'title',
   CategoryName: 'categoryName',
   Category: 'categoryName',
+  Industry: 'categoryName',
+  Business: 'categoryName',
   Phone: 'phone',
   Mobile: 'phone',
   Contact: 'phone',
   'Phone Number': 'phone',
+  'Mobile Number': 'phone',
   Address: 'address',
   City: 'city',
+  Location: 'city',
   State: 'state',
   Website: 'website',
   URL: 'website',
+  Domain: 'website',
   Email: 'email',
   'Email Address': 'email',
+  'Mail ID': 'email',
   'Contact Person': 'contactPerson',
-  Name: 'contactPerson'
+  Owner: 'contactPerson',
+  Manager: 'contactPerson'
 };
 
 const normalizeValue = (val) => (val ? String(val).trim() : '');
@@ -54,6 +63,7 @@ const parseExcelFile = (filePath) => {
  */
 const previewImport = async (rawData, customMapping = {}) => {
   const mapping = { ...DEFAULT_COLUMN_MAPPING, ...customMapping };
+  const detectedHeaders = rawData.length > 0 ? Object.keys(rawData[0]).map((h) => h.trim()) : [];
   
   const mappedRecords = rawData.map((row, index) => {
     const record = { originalRowIndex: index + 1, tags: ['Excel Import'] };
@@ -61,14 +71,16 @@ const previewImport = async (rawData, customMapping = {}) => {
     Object.keys(row).forEach((colHeader) => {
       const cleanHeader = colHeader.trim();
       const mappedField = mapping[cleanHeader] || mapping[colHeader];
-      if (mappedField) {
+      if (mappedField && mappedField !== 'ignore') {
         record[mappedField] = normalizeValue(row[colHeader]);
       }
     });
 
-    if (!record.title && row.Title) record.title = normalizeValue(row.Title);
-    if (!record.title && row.Company) record.title = normalizeValue(row.Company);
-    if (!record.title && row['Company Name']) record.title = normalizeValue(row['Company Name']);
+    // Flexible Company Name / Title Fallbacks
+    if (!record.title) {
+      const possibleTitle = row.Title || row.Company || row['Company Name'] || row.Name || row['Business Name'] || row['TitleName'];
+      if (possibleTitle) record.title = normalizeValue(possibleTitle);
+    }
 
     return record;
   });
@@ -121,6 +133,7 @@ const previewImport = async (rawData, customMapping = {}) => {
     duplicateCount,
     invalidEmailCount,
     invalidPhoneCount,
+    detectedHeaders,
     previewList
   };
 };
@@ -134,7 +147,14 @@ const commitImport = async (recordsToImport, customSender = {}, duplicateAction 
   const updatedLeads = [];
 
   for (const item of recordsToImport) {
-    if (!item.title) continue;
+    // Flexible fallback to derive title if missing
+    const leadTitle = item.title || item.Company || item['Company Name'] || item.Title || item.Name || item['Business Name'];
+    if (!leadTitle) {
+      skippedLeads.push(item);
+      continue;
+    }
+
+    item.title = normalizeValue(leadTitle);
 
     // Check duplicate in DB
     const queryConditions = [];
