@@ -5,7 +5,7 @@ const { processBulkQueue } = require('../utils/rateLimiter');
 const { logAudit } = require('../services/auditLogService');
 
 // @desc    Send WhatsApp message to a single lead
-// @route   POST /api/whatsapp/send
+// @route   POST /api/leads/whatsapp/send
 // @access  Private
 const sendSingleWhatsApp = async (req, res, next) => {
   try {
@@ -27,7 +27,7 @@ const sendSingleWhatsApp = async (req, res, next) => {
 };
 
 // @desc    Send Email message to a single lead
-// @route   POST /api/email/send
+// @route   POST /api/leads/email/send
 // @access  Private
 const sendSingleEmail = async (req, res, next) => {
   try {
@@ -50,11 +50,12 @@ const sendSingleEmail = async (req, res, next) => {
 };
 
 // @desc    Bulk send WhatsApp, Email, or Both to user-selected leads
-// @route   POST /api/messages/bulk-send
+// @route   POST /api/leads/messages/bulk-send
 // @access  Private
 const bulkSendMessages = async (req, res, next) => {
   try {
     const { leadIds, channel = 'WHATSAPP' } = req.body;
+    const upperChannel = String(channel || 'WHATSAPP').toUpperCase();
 
     if (!Array.isArray(leadIds) || leadIds.length === 0) {
       return res.status(400).json({ success: false, message: 'Please select at least one lead' });
@@ -66,54 +67,65 @@ const bulkSendMessages = async (req, res, next) => {
     const skippedDoNotContactCount = leads.length - eligibleLeads.length;
 
     const worker = async (lead) => {
-      const outcome = { leadId: lead._id, title: lead.title };
+      const outcome = { leadId: lead._id, title: lead.title, success: false };
 
-      if (channel === 'WHATSAPP' || channel === 'BOTH') {
+      let waResult = null;
+      let emailResult = null;
+
+      if (upperChannel === 'WHATSAPP' || upperChannel === 'BOTH') {
         try {
-          outcome.whatsapp = await sendWhatsAppMessage({
+          waResult = await sendWhatsAppMessage({
             leadId: lead._id,
             userId: req.user?._id
           });
+          outcome.whatsapp = waResult;
         } catch (err) {
           outcome.whatsapp = { success: false, error: err.message };
         }
       }
 
-      if (channel === 'EMAIL' || channel === 'BOTH') {
+      if (upperChannel === 'EMAIL' || upperChannel === 'BOTH') {
         try {
-          outcome.email = await sendEmailMessage({
+          emailResult = await sendEmailMessage({
             leadId: lead._id,
             userId: req.user?._id
           });
+          outcome.email = emailResult;
         } catch (err) {
           outcome.email = { success: false, error: err.message };
         }
       }
 
+      // Determine overall success for this lead item
+      if (upperChannel === 'WHATSAPP') outcome.success = waResult?.success || false;
+      else if (upperChannel === 'EMAIL') outcome.success = emailResult?.success || false;
+      else if (upperChannel === 'BOTH') outcome.success = (waResult?.success || false) || (emailResult?.success || false);
+
       return outcome;
     };
 
     // Execute bulk queue with 600ms delay between leads to respect rate limits
-    const results = await processBulkQueue(eligibleLeads, worker, 600);
+    const queueResults = await processBulkQueue(eligibleLeads, worker, 600);
 
-    const sentCount = results.filter((r) => r.success).length;
-    const failedCount = results.filter((r) => !r.success).length;
+    const detailedResults = queueResults.map((q) => q.result || { leadId: q.item._id, title: q.item.title, success: false, error: q.error });
+    const sentCount = detailedResults.filter((r) => r.success).length;
+    const failedCount = detailedResults.filter((r) => !r.success).length;
 
     await logAudit({
       user: req.user?._id,
       action: 'BULK_MESSAGES_SENT',
-      details: `Executed bulk send (${channel}) for ${eligibleLeads.length} leads. Success: ${sentCount}, Failed: ${failedCount}, Skipped DO_NOT_CONTACT: ${skippedDoNotContactCount}`
+      details: `Executed bulk send (${upperChannel}) for ${eligibleLeads.length} leads. Success: ${sentCount}, Failed: ${failedCount}, Skipped DO_NOT_CONTACT: ${skippedDoNotContactCount}`
     });
 
     res.json({
       success: true,
-      channel,
+      channel: upperChannel,
       totalRequested: leadIds.length,
       eligibleCount: eligibleLeads.length,
       skippedDoNotContactCount,
       sentCount,
       failedCount,
-      results
+      results: detailedResults
     });
   } catch (error) {
     next(error);

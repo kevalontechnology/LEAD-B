@@ -18,6 +18,7 @@ const { sendSingleWhatsApp, sendSingleEmail, bulkSendMessages } = require('../co
 
 router.use(protect);
 
+// 1. Static & Bulk Routes (Must be before dynamic /:id routes)
 router.get('/', getLeads);
 router.post('/', createLead);
 
@@ -26,16 +27,17 @@ router.post('/import/confirm', confirmImportExcel);
 
 router.post('/bulk-delete', bulkDeleteLeads);
 
+// WhatsApp & Email sending routes (Static routes before /:id)
+router.post('/whatsapp/send', sendSingleWhatsApp);
+router.post('/email/send', sendSingleEmail);
+router.post('/messages/bulk-send', bulkSendMessages);
+
+// 2. Dynamic Param Routes
 router.get('/:id', getLeadById);
 router.put('/:id', updateLead);
 router.delete('/:id', deleteLead);
 
 router.put('/:id/message', updateLeadMessage);
 router.post('/:id/regenerate-message', regenerateLeadMessage);
-
-// WhatsApp & Email sending routes
-router.post('/whatsapp/send', sendSingleWhatsApp);
-router.post('/email/send', sendSingleEmail);
-router.post('/messages/bulk-send', bulkSendMessages);
 
 module.exports = router;
