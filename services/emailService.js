@@ -35,8 +35,8 @@ const sendEmailMessage = async ({ leadId, customSubject, customBody, userId }) =
   const smtpPort = settings?.smtpPort || process.env.SMTP_PORT || 587;
   const smtpUsername = settings?.smtpUsername || process.env.SMTP_USERNAME;
   const smtpPassword = settings?.smtpPassword || process.env.SMTP_PASSWORD;
-  const fromName = settings?.smtpFromName || 'Harsh Kothari | Kevalon Technology';
-  const fromEmail = settings?.smtpFromEmail || 'sales@kevalontechnology.in';
+  const fromName = settings?.smtpFromName || settings?.senderName || 'Harsh Kothari | Kevalon Technology';
+  const fromEmail = settings?.smtpFromEmail || settings?.email || 'sales@kevalontechnology.in';
 
   let sendSuccess = false;
   let responseData = null;
@@ -44,15 +44,24 @@ const sendEmailMessage = async ({ leadId, customSubject, customBody, userId }) =
 
   if (smtpHost && smtpUsername && smtpPassword) {
     try {
+      const portNum = Number(smtpPort);
+      const isSecurePort = portNum === 465;
+
       const transporter = nodemailer.createTransport({
-        host: smtpHost,
-        port: Number(smtpPort),
-        secure: Number(smtpPort) === 465,
+        host: smtpHost.trim(),
+        port: portNum,
+        secure: isSecurePort, // true for 465 (SSL), false for 587 (TLS)
+        requireTLS: !isSecurePort, // require STARTTLS for 587
         auth: {
-          user: smtpUsername,
-          pass: smtpPassword
+          user: smtpUsername.trim(),
+          pass: smtpPassword.trim()
         },
-        timeout: 10000
+        tls: {
+          rejectUnauthorized: false
+        },
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000
       });
 
       // Format linebreaks to HTML
