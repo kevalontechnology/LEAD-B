@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 const dotenv = require('dotenv');
 
 dotenv.config();
@@ -35,7 +36,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Static uploads folder
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Routes
+// API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/leads', leadRoutes);
 app.use('/api/templates', templateRoutes);
@@ -53,6 +54,19 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date()
   });
 });
+
+// Serve frontend static build files if client/dist exists
+const clientDistPath = path.join(__dirname, '../client/dist');
+if (fs.existsSync(clientDistPath)) {
+  app.use(express.static(clientDistPath));
+
+  app.get('*', (req, res, next) => {
+    if (req.path.startsWith('/api')) {
+      return next();
+    }
+    res.sendFile(path.join(clientDistPath, 'index.html'));
+  });
+}
 
 // Central Error Handler
 app.use(errorHandler);
