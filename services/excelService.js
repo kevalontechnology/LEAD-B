@@ -9,15 +9,20 @@ const DEFAULT_COLUMN_MAPPING = {
   TitleName: 'title',
   Name: 'title',
   'Business Name': 'title',
+  'Company / Title': 'title',
+  'Column 1': 'title',
   CategoryName: 'categoryName',
   Category: 'categoryName',
   Industry: 'categoryName',
   Business: 'categoryName',
+  'Column 2': 'categoryName',
   Phone: 'phone',
   Mobile: 'phone',
   Contact: 'phone',
   'Phone Number': 'phone',
   'Mobile Number': 'phone',
+  'Phone / Address': 'phone',
+  'Column 3': 'phone',
   Address: 'address',
   City: 'city',
   Location: 'city',
@@ -85,15 +90,39 @@ const normalizeWebsiteDomain = (val) => {
 const escapeRegex = (str) => str.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
 
 /**
- * Parses uploaded Excel/CSV file buffer or filepath
+ * Parses uploaded Excel/CSV file buffer or filepath with smart header detection
  */
 const parseExcelFile = (filePath) => {
   const workbook = xlsx.readFile(filePath);
   const sheetName = workbook.SheetNames[0];
   const sheet = workbook.Sheets[sheetName];
-  // defval: '' keeps empty cell placeholders
-  const rawData = xlsx.utils.sheet_to_json(sheet, { defval: '', raw: false });
-  return rawData;
+
+  // Get raw matrix (array of arrays)
+  const rows = xlsx.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+  if (!rows || rows.length === 0) return [];
+
+  const firstRow = rows[0].map((c) => String(c).trim().toLowerCase());
+  const knownHeaders = ['title', 'company', 'company name', 'name', 'category', 'categoryname', 'phone', 'mobile', 'email', 'city', 'address', 'website', 'industry'];
+  const hasStandardHeader = firstRow.some((cell) => knownHeaders.includes(cell));
+
+  if (hasStandardHeader) {
+    // File has standard header row in Row 1
+    return xlsx.utils.sheet_to_json(sheet, { defval: '', raw: false });
+  } else {
+    // Headerless file: Generate Col 1, Col 2, Col 3 headers so Row 1 data is preserved
+    const objectRows = [];
+    rows.forEach((row) => {
+      if (row.some((cell) => String(cell).trim() !== '')) {
+        const obj = {};
+        row.forEach((cellVal, colIdx) => {
+          const colName = colIdx === 0 ? 'Company / Title' : colIdx === 1 ? 'Category' : colIdx === 2 ? 'Phone / Address' : `Column ${colIdx + 1}`;
+          obj[colName] = String(cellVal).trim();
+        });
+        objectRows.push(obj);
+      }
+    });
+    return objectRows;
+  }
 };
 
 /**
@@ -131,7 +160,7 @@ const previewImport = async (rawData, customMapping = {}) => {
     });
 
     // Flexible Company Title derivation
-    const possibleTitle = record.title || row.Title || row.Company || row['Company Name'] || row.Name || row['Business Name'] || row.TitleName;
+    const possibleTitle = record.title || row.Title || row.Company || row['Company Name'] || row.Name || row['Business Name'] || row.TitleName || row['Company / Title'] || row['Column 1'];
     if (possibleTitle) {
       record.title = normalizeString(possibleTitle);
     }
@@ -238,7 +267,7 @@ const commitImport = async (recordsToImport, customSender = {}, duplicateAction 
   const batchWebsites = new Set();
 
   for (const item of recordsToImport) {
-    const leadTitle = item.title || item.Company || item['Company Name'] || item.Title || item.Name || item['Business Name'];
+    const leadTitle = item.title || item.Company || item['Company Name'] || item.Title || item.Name || item['Business Name'] || item['Company / Title'] || item['Column 1'];
     if (!leadTitle || !normalizeString(leadTitle)) {
       invalidCount++;
       skippedLeads.push(item);
