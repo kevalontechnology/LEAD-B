@@ -130,7 +130,15 @@ const parseExcelFile = (filePath) => {
  */
 const previewImport = async (rawData, customMapping = {}) => {
   const mapping = { ...DEFAULT_COLUMN_MAPPING, ...customMapping };
-  const detectedHeaders = rawData.length > 0 ? Object.keys(rawData[0]).map((h) => h.trim()) : [];
+  const detectedHeaders = [];
+  rawData.forEach((row) => {
+    Object.keys(row).forEach((k) => {
+      const cleanK = k.trim();
+      if (cleanK !== '_sourceFile' && !detectedHeaders.includes(cleanK)) {
+        detectedHeaders.push(cleanK);
+      }
+    });
+  });
   
   let totalRows = rawData.length;
   let validRowsCount = 0;

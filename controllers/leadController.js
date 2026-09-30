@@ -3,6 +3,7 @@ const Settings = require('../models/Settings');
 const { parseExcelFile, previewImport, commitImport } = require('../services/excelService');
 const { generateLeadMessages } = require('../services/messageGeneratorService');
 const { logAudit } = require('../services/auditLogService');
+const fs = require('fs');
 
 // @desc    Get all leads with search & filters
 // @route   GET /api/leads
@@ -253,23 +254,45 @@ const bulkDeleteLeads = async (req, res, next) => {
   }
 };
 
-// @desc    Step 1: Upload Excel/CSV & get Preview stats
+// @desc    Step 1: Upload Excel/CSV & get Preview stats (Single or Multiple Files)
 // @route   POST /api/leads/import/preview
 // @access  Private
 const previewImportExcel = async (req, res, next) => {
   try {
-    if (!req.file) {
-      return res.status(400).json({ success: false, message: 'Please upload an Excel or CSV file' });
+    const uploadedFiles = req.files && req.files.length > 0 ? req.files : (req.file ? [req.file] : []);
+
+    if (uploadedFiles.length === 0) {
+      return res.status(400).json({ success: false, message: 'Please upload at least one Excel or CSV file' });
     }
 
     const customMapping = req.body.mapping ? JSON.parse(req.body.mapping) : {};
-    const rawData = parseExcelFile(req.file.path);
-    const previewData = await previewImport(rawData, customMapping);
+
+    let allRawData = [];
+    const fileNames = [];
+
+    for (const file of uploadedFiles) {
+      fileNames.push(file.originalname);
+      const fileRows = parseExcelFile(file.path);
+      fileRows.forEach((row) => {
+        row._sourceFile = file.originalname;
+      });
+      allRawData = allRawData.concat(fileRows);
+    }
+
+    const previewData = await previewImport(allRawData, customMapping);
+
+    // Clean up temporary files from disk after parsing
+    uploadedFiles.forEach((file) => {
+      fs.unlink(file.path, (err) => {
+        if (err) console.error(`Error deleting temp file ${file.path}:`, err);
+      });
+    });
 
     res.json({
       success: true,
-      filePath: req.file.path,
-      fileName: req.file.originalname,
+      fileCount: uploadedFiles.length,
+      fileNames,
+      fileName: fileNames.join(', '),
       preview: previewData
     });
   } catch (error) {

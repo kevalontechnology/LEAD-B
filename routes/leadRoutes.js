@@ -22,7 +22,7 @@ router.use(protect);
 router.get('/', getLeads);
 router.post('/', createLead);
 
-router.post('/import/preview', upload.single('file'), previewImportExcel);
+router.post('/import/preview', upload.any(), previewImportExcel);
 router.post('/import/confirm', confirmImportExcel);
 
 router.post('/bulk-delete', bulkDeleteLeads);
