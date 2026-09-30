@@ -84,7 +84,9 @@ const getLeads = async (req, res, next) => {
       .limit(limitNum)
       .populate('assignedTo', 'name email');
 
+    // Calculate actual count directly from MongoDB
     const total = await Lead.countDocuments(query);
+    const totalPages = Math.ceil(total / limitNum) || 1;
 
     // Fetch distinct categories and cities for dropdown filters
     const categories = await Lead.distinct('categoryName');
@@ -95,7 +97,13 @@ const getLeads = async (req, res, next) => {
       count: leads.length,
       total,
       page: pageNum,
-      pages: Math.ceil(total / limitNum),
+      pages: totalPages,
+      pagination: {
+        page: pageNum,
+        limit: limitNum,
+        total,
+        totalPages
+      },
       categories,
       cities,
       leads
@@ -292,18 +300,26 @@ const confirmImportExcel = async (req, res, next) => {
         }
       : {};
 
-    const importResult = await commitImport(records, customSender, duplicateAction);
+    const commitResult = await commitImport(records, customSender, duplicateAction);
+    const databaseTotal = await Lead.countDocuments();
 
     await logAudit({
       user: req.user?._id,
       action: 'EXCEL_IMPORTED',
-      details: `Imported ${importResult.importedCount} new leads, updated ${importResult.updatedCount}, skipped ${importResult.skippedCount}`
+      details: `Imported ${commitResult.importSummary.created} new leads, updated ${commitResult.importSummary.updated}, skipped ${commitResult.importSummary.skipped}. Database Total: ${databaseTotal}`
     });
 
     res.status(201).json({
       success: true,
-      message: `Import complete! ${importResult.importedCount} new leads imported and messages generated.`,
-      result: importResult
+      message: `Import complete! ${commitResult.importSummary.created} new leads created. Database Total: ${databaseTotal}`,
+      importSummary: commitResult.importSummary,
+      databaseTotal,
+      result: {
+        importedCount: commitResult.importSummary.created,
+        updatedCount: commitResult.importSummary.updated,
+        skippedCount: commitResult.importSummary.skipped,
+        importedLeads: commitResult.importedLeads
+      }
     });
   } catch (error) {
     next(error);
