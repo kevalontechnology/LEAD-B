@@ -275,6 +275,16 @@ const commitImport = async (recordsToImport, customSender = {}, duplicateAction 
     }
 
     item.title = normalizeString(leadTitle);
+
+    const leadPhone = item.phone || item['Phone / Address'] || item['Column 3'] || item.Phone || item.Mobile || item.Contact || item['Phone Number'];
+    if (leadPhone) item.phone = normalizeString(leadPhone);
+
+    const leadCategory = item.categoryName || item.Category || item['Column 2'] || item.Industry || item.Business;
+    if (leadCategory) item.categoryName = normalizeString(leadCategory);
+
+    const leadEmail = item.email || item['Email Address'] || item['Mail ID'];
+    if (leadEmail) item.email = normalizeString(leadEmail);
+
     const cleanEmail = normalizeEmail(item.email);
     const cleanPhone = extractCleanPhone(item.phone);
     const cleanWeb = normalizeWebsiteDomain(item.website);
