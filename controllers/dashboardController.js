@@ -34,11 +34,30 @@ const getDashboardStats = async (req, res, next) => {
     const interestedLeads = await Lead.countDocuments({ leadStatus: 'INTERESTED' });
     const convertedLeads = await Lead.countDocuments({ leadStatus: 'CONVERTED' });
 
-    // Chart Data 1: Leads by Category
+    // Chart Data 1: Complete Category Breakdown for ALL Categories
     const categoryAgg = await Lead.aggregate([
-      { $group: { _id: '$categoryName', count: { $sum: 1 } } },
-      { $sort: { count: -1 } },
-      { $limit: 10 }
+      {
+        $group: {
+          _id: { $ifNull: ['$categoryName', 'General / Uncategorized'] },
+          count: { $sum: 1 },
+          messageReady: {
+            $sum: { $cond: [{ $eq: ['$leadStatus', 'MESSAGE_READY'] }, 1, 0] }
+          },
+          whatsappSent: {
+            $sum: { $cond: [{ $eq: ['$whatsappStatus', 'SENT'] }, 1, 0] }
+          },
+          emailSent: {
+            $sum: { $cond: [{ $eq: ['$emailStatus', 'SENT'] }, 1, 0] }
+          },
+          interested: {
+            $sum: { $cond: [{ $eq: ['$leadStatus', 'INTERESTED'] }, 1, 0] }
+          },
+          converted: {
+            $sum: { $cond: [{ $eq: ['$leadStatus', 'CONVERTED'] }, 1, 0] }
+          }
+        }
+      },
+      { $sort: { count: -1 } }
     ]);
 
     // Chart Data 2: Leads by City
@@ -46,7 +65,7 @@ const getDashboardStats = async (req, res, next) => {
       { $match: { city: { $ne: '' } } },
       { $group: { _id: '$city', count: { $sum: 1 } } },
       { $sort: { count: -1 } },
-      { $limit: 10 }
+      { $limit: 15 }
     ]);
 
     // Chart Data 3: Lead Status Breakdown
@@ -73,7 +92,15 @@ const getDashboardStats = async (req, res, next) => {
         convertedLeads
       },
       charts: {
-        byCategory: categoryAgg.map((c) => ({ category: c._id || 'Uncategorized', count: c.count })),
+        byCategory: categoryAgg.map((c) => ({
+          category: c._id || 'General',
+          count: c.count,
+          messageReady: c.messageReady,
+          whatsappSent: c.whatsappSent,
+          emailSent: c.emailSent,
+          interested: c.interested,
+          converted: c.converted
+        })),
         byCity: cityAgg.map((c) => ({ city: c._id, count: c.count })),
         byStatus: statusAgg.map((s) => ({ status: s._id, count: s.count })),
         channelBreakdown: {
