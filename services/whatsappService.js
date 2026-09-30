@@ -3,6 +3,7 @@ const Lead = require('../models/Lead');
 const Communication = require('../models/Communication');
 const Settings = require('../models/Settings');
 const { logAudit } = require('./auditLogService');
+const { sendWhatsPortalNotification } = require('./whatsportal.service');
 
 /**
  * Send WhatsApp message to a single lead
@@ -11,6 +12,17 @@ const sendWhatsAppMessage = async ({ leadId, customMessage, userId }) => {
   const lead = await Lead.findById(leadId);
   if (!lead) {
     throw new Error('Lead not found');
+  }
+
+  if (lead.whatsappNotificationSent) {
+    return {
+      success: true,
+      leadId: lead._id,
+      leadTitle: lead.title,
+      whatsappStatus: lead.whatsappStatus || 'SENT',
+      skippedDuplicate: true,
+      message: 'WhatsApp notification was already sent for this lead.'
+    };
   }
 
   // Safety check: DO_NOT_CONTACT
@@ -98,12 +110,34 @@ const sendWhatsAppMessage = async ({ leadId, customMessage, userId }) => {
     });
     await comm.save();
 
+    const whatsportalResult = await sendWhatsPortalNotification({
+      name: lead.contactPerson || lead.title || 'Customer',
+      phone: lead.phone,
+      requestType: lead.categoryName || 'LEAD',
+      referenceId: String(lead._id),
+      status: lead.leadStatus,
+      date: new Date().toISOString()
+    });
+
+    if (whatsportalResult.success) {
+      lead.whatsappNotificationSent = true;
+      lead.whatsappNotificationSentAt = new Date();
+      lead.whatsappNotificationMessageId = whatsportalResult.messageId || '';
+      lead.whatsappNotificationError = '';
+      await lead.save();
+    } else {
+      lead.whatsappNotificationSent = false;
+      lead.whatsappNotificationSentAt = null;
+      lead.whatsappNotificationError = whatsportalResult.message || 'WhatsPortal notification failed';
+      await lead.save();
+    }
+
     // Log Audit
     await logAudit({
       user: userId,
       action: 'WHATSAPP_SENT',
       leadId: lead._id,
-      details: `WhatsApp message sent to ${lead.title} (${lead.phone})`
+      details: `WhatsApp message sent to ${lead.title} (${lead.phone})` + (whatsportalResult.success ? ' | WhatsPortal accepted' : ` | WhatsPortal failed: ${whatsportalResult.message}`)
     });
 
     return {
@@ -112,7 +146,8 @@ const sendWhatsAppMessage = async ({ leadId, customMessage, userId }) => {
       leadTitle: lead.title,
       whatsappStatus: 'SENT',
       communicationId: comm._id,
-      apiData: apiResponseData
+      apiData: apiResponseData,
+      whatsportal: whatsportalResult
     };
   } else {
     lead.whatsappStatus = 'FAILED';

@@ -122,6 +122,22 @@ const leadSchema = new mongoose.Schema(
       type: Number,
       default: 0
     },
+    whatsappNotificationSent: {
+      type: Boolean,
+      default: false
+    },
+    whatsappNotificationSentAt: {
+      type: Date,
+      default: null
+    },
+    whatsappNotificationMessageId: {
+      type: String,
+      default: ''
+    },
+    whatsappNotificationError: {
+      type: String,
+      default: ''
+    },
     notes: {
       type: String,
       default: ''
