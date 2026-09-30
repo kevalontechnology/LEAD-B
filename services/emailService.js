@@ -1,11 +1,10 @@
-const nodemailer = require('nodemailer');
+const axios = require('axios');
 const Lead = require('../models/Lead');
 const Communication = require('../models/Communication');
-const Settings = require('../models/Settings');
 const { logAudit } = require('./auditLogService');
 
 /**
- * Send Email to a single lead via Nodemailer
+ * Send a transactional template email to a single lead via Brevo
  */
 const sendEmailMessage = async ({ leadId, customSubject, customBody, userId }) => {
   const lead = await Lead.findById(leadId);
@@ -22,70 +21,76 @@ const sendEmailMessage = async ({ leadId, customSubject, customBody, userId }) =
     throw new Error(`Lead "${lead.title}" does not have an email address.`);
   }
 
-  const subjectText = customSubject || lead.generatedEmailSubject;
-  const bodyText = customBody || lead.generatedEmailBody;
+  const subjectText = customSubject ?? lead.generatedEmailSubject;
+  const bodyText = customBody ?? lead.generatedEmailBody;
 
-  if (!subjectText || !bodyText) {
+  if (!subjectText?.trim() || !bodyText?.trim()) {
     throw new Error(`No email subject/body content found for lead "${lead.title}".`);
   }
-
-  // Fetch Settings
-  const settings = await Settings.findOne();
-  const smtpHost = settings?.smtpHost || process.env.SMTP_HOST;
-  const smtpPort = settings?.smtpPort || process.env.SMTP_PORT || 587;
-  const smtpUsername = settings?.smtpUsername || process.env.SMTP_USERNAME;
-  const smtpPassword = settings?.smtpPassword || process.env.SMTP_PASSWORD;
-  const fromName = settings?.smtpFromName || settings?.senderName || 'Harsh Kothari | Kevalon Technology';
-  const fromEmail = settings?.smtpFromEmail || settings?.email || 'sales@kevalontechnology.in';
 
   let sendSuccess = false;
   let responseData = null;
   let errorMessage = null;
+  const templateId = Number(process.env.BREVO_LEAD_TEMPLATE_ID);
+  const hasBrevoConfiguration = Boolean(
+    process.env.BREVO_API_KEY &&
+    Number.isInteger(templateId) &&
+    templateId > 0 &&
+    process.env.BREVO_SENDER_EMAIL &&
+    process.env.BREVO_SENDER_NAME
+  );
 
-  if (smtpHost && smtpUsername && smtpPassword) {
+  if (!hasBrevoConfiguration) {
+    errorMessage = 'Brevo email configuration is incomplete.';
+  } else {
     try {
-      const portNum = Number(smtpPort);
-      const isSecurePort = portNum === 465;
-
-      const transporter = nodemailer.createTransport({
-        host: smtpHost.trim(),
-        port: portNum,
-        secure: isSecurePort, // true for 465 (SSL), false for 587 (TLS)
-        requireTLS: !isSecurePort, // require STARTTLS for 587
-        auth: {
-          user: smtpUsername.trim(),
-          pass: smtpPassword.trim()
+      const payload = {
+        sender: {
+          email: process.env.BREVO_SENDER_EMAIL,
+          name: process.env.BREVO_SENDER_NAME
         },
-        tls: {
-          rejectUnauthorized: false
+        to: [
+          {
+            email: lead.email,
+            name: lead.contactPerson || lead.title
+          }
+        ],
+        replyTo: {
+          email: process.env.BREVO_SENDER_EMAIL,
+          name: process.env.BREVO_SENDER_NAME
         },
-        connectionTimeout: 10000,
-        greetingTimeout: 10000,
-        socketTimeout: 15000
-      });
-
-      // Format linebreaks to HTML
-      const htmlContent = bodyText.replace(/\n/g, '<br/>');
-
-      const info = await transporter.sendMail({
-        from: `"${fromName}" <${fromEmail}>`,
-        to: lead.email,
+        templateId,
         subject: subjectText,
-        text: bodyText,
-        html: `<div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #333;">${htmlContent}</div>`
-      });
+        params: {
+          generatedEmailBody: bodyText
+        }
+      };
+
+      const response = await axios.post(
+        'https://api.brevo.com/v3/smtp/email',
+        payload,
+        {
+          headers: {
+            accept: 'application/json',
+            'api-key': process.env.BREVO_API_KEY,
+            'content-type': 'application/json'
+          },
+          timeout: 15000
+        }
+      );
 
       sendSuccess = true;
-      responseData = { messageId: info.messageId, response: info.response };
+      responseData = {
+        messageId: response.data?.messageId,
+        response: response.data
+      };
     } catch (error) {
-      errorMessage = error.message;
-      console.error(`[Email SMTP Error] for Lead ${lead.title}:`, errorMessage);
+      const status = error.response?.status;
+      const providerMessage = error.response?.data?.message;
+      errorMessage = status
+        ? `Brevo request failed (${status})${providerMessage ? `: ${providerMessage}` : ''}`
+        : error.message || 'Brevo request failed';
     }
-  } else {
-    // Local development mode / Simulation mode
-    console.log(`[Email API Simulation] Sending email to ${lead.email} for ${lead.title}...`);
-    sendSuccess = true;
-    responseData = { simulation: true, messageId: `msg_${Date.now()}@kevalontechnology.in` };
   }
 
   if (sendSuccess) {
@@ -112,7 +117,7 @@ const sendEmailMessage = async ({ leadId, customSubject, customBody, userId }) =
       user: userId,
       action: 'EMAIL_SENT',
       leadId: lead._id,
-      details: `Email sent to ${lead.title} (${lead.email}) - Subject: ${subjectText}`
+      details: `Email sent for lead ${lead._id}`
     });
 
     return {
@@ -143,7 +148,7 @@ const sendEmailMessage = async ({ leadId, customSubject, customBody, userId }) =
       user: userId,
       action: 'EMAIL_FAILED',
       leadId: lead._id,
-      details: `Email send failed for ${lead.title}: ${errorMessage}`
+      details: `Email delivery failed for lead ${lead._id}: ${errorMessage}`
     });
 
     return {
