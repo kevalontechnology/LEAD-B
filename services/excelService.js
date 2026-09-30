@@ -35,32 +35,54 @@ const DEFAULT_COLUMN_MAPPING = {
 
 const normalizeString = (val) => (val !== undefined && val !== null ? String(val).trim() : '');
 
-const normalizeEmail = (val) => {
-  const str = normalizeString(val).toLowerCase();
-  return str;
-};
-
-const normalizePhoneDigits = (val) => {
-  const str = normalizeString(val);
-  return str.replace(/\D/g, '');
-};
-
-const normalizeWebsite = (val) => {
-  let web = normalizeString(val).toLowerCase();
-  return web.replace(/^(https?:\/\/)?(www\.)?/, '').replace(/\/$/, '');
-};
-
 const isValidEmail = (email) => {
   if (!email) return false;
   const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   return re.test(email);
 };
 
-const isValidPhone = (phone) => {
-  if (!phone) return false;
-  const digits = normalizePhoneDigits(phone);
-  return digits.length >= 7 && digits.length <= 15;
+const normalizeEmail = (val) => {
+  const str = normalizeString(val).toLowerCase();
+  if (isValidEmail(str)) return str;
+  return '';
 };
+
+const extractCleanPhone = (val) => {
+  const str = normalizeString(val);
+  if (!str) return '';
+  const digits = str.replace(/\D/g, '');
+  if (digits.length >= 10) {
+    return digits.slice(-10); // Standard 10-digit phone
+  } else if (digits.length >= 7) {
+    return digits;
+  }
+  return '';
+};
+
+const normalizeWebsiteDomain = (val) => {
+  let web = normalizeString(val).toLowerCase();
+  if (!web || web === 'n/a' || web === 'none' || web === 'null') return '';
+  web = web.replace(/^(https?:\/\/)?(www\.)?/, '').replace(/\/.*$/, '');
+  const genericDomains = [
+    'facebook.com',
+    'instagram.com',
+    'linkedin.com',
+    'twitter.com',
+    'youtube.com',
+    'gmail.com',
+    'yahoo.com',
+    'google.com',
+    'com',
+    'in',
+    'org'
+  ];
+  if (genericDomains.includes(web) || web.length < 4 || !web.includes('.')) {
+    return '';
+  }
+  return web;
+};
+
+const escapeRegex = (str) => str.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
 
 /**
  * Parses uploaded Excel/CSV file buffer or filepath
@@ -91,7 +113,7 @@ const previewImport = async (rawData, customMapping = {}) => {
 
   const previewList = [];
 
-  // Track in-batch duplicates to prevent counting identical rows twice in preview
+  // Track in-batch duplicates
   const batchEmails = new Set();
   const batchPhones = new Set();
   const batchWebsites = new Set();
@@ -108,7 +130,7 @@ const previewImport = async (rawData, customMapping = {}) => {
       }
     });
 
-    // Derive company title
+    // Flexible Company Title derivation
     const possibleTitle = record.title || row.Title || row.Company || row['Company Name'] || row.Name || row['Business Name'] || row.TitleName;
     if (possibleTitle) {
       record.title = normalizeString(possibleTitle);
@@ -128,22 +150,26 @@ const previewImport = async (rawData, customMapping = {}) => {
     validRowsCount++;
 
     const cleanEmail = normalizeEmail(record.email);
-    const cleanPhoneDigits = normalizePhoneDigits(record.phone);
-    const cleanWeb = normalizeWebsite(record.website);
+    const cleanPhone = extractCleanPhone(record.phone);
+    const cleanWeb = normalizeWebsiteDomain(record.website);
 
-    const isEmailValid = cleanEmail ? isValidEmail(cleanEmail) : true;
-    const isPhoneValid = record.phone ? isValidPhone(record.phone) : true;
+    const isEmailValid = record.email ? isValidEmail(normalizeString(record.email).toLowerCase()) : true;
+    const isPhoneValid = record.phone ? extractCleanPhone(record.phone).length >= 7 : true;
 
-    if (cleanEmail && !isEmailValid) invalidEmailCount++;
+    if (record.email && !isEmailValid) invalidEmailCount++;
     if (record.phone && !isPhoneValid) invalidPhoneCount++;
 
-    // Check duplicate in database
+    // Construct precise MongoDB query conditions
     const queryConditions = [];
-    if (cleanEmail && isEmailValid) queryConditions.push({ email: cleanEmail });
-    if (cleanPhoneDigits && cleanPhoneDigits.length >= 7) {
-      queryConditions.push({ phone: { $regex: cleanPhoneDigits.slice(-10) } });
+    if (cleanEmail) {
+      queryConditions.push({ email: cleanEmail });
     }
-    if (cleanWeb) queryConditions.push({ website: { $regex: cleanWeb, $options: 'i' } });
+    if (cleanPhone) {
+      queryConditions.push({ phone: { $regex: `${escapeRegex(cleanPhone)}$` } });
+    }
+    if (cleanWeb) {
+      queryConditions.push({ website: { $regex: escapeRegex(cleanWeb), $options: 'i' } });
+    }
 
     let existingLead = null;
     if (queryConditions.length > 0) {
@@ -153,7 +179,7 @@ const previewImport = async (rawData, customMapping = {}) => {
     // Check in-batch duplicates
     const inBatchDup =
       (cleanEmail && batchEmails.has(cleanEmail)) ||
-      (cleanPhoneDigits && cleanPhoneDigits.length >= 7 && batchPhones.has(cleanPhoneDigits)) ||
+      (cleanPhone && batchPhones.has(cleanPhone)) ||
       (cleanWeb && batchWebsites.has(cleanWeb));
 
     const isDuplicate = !!existingLead || inBatchDup;
@@ -163,8 +189,8 @@ const previewImport = async (rawData, customMapping = {}) => {
       newCount++;
     }
 
-    if (cleanEmail && isEmailValid) batchEmails.add(cleanEmail);
-    if (cleanPhoneDigits && cleanPhoneDigits.length >= 7) batchPhones.add(cleanPhoneDigits);
+    if (cleanEmail) batchEmails.add(cleanEmail);
+    if (cleanPhone) batchPhones.add(cleanPhone);
     if (cleanWeb) batchWebsites.add(cleanWeb);
 
     previewList.push({
@@ -206,7 +232,7 @@ const commitImport = async (recordsToImport, customSender = {}, duplicateAction 
   const updatedLeads = [];
   const skippedLeads = [];
 
-  // Track in-batch created IDs/keys during execution
+  // Track in-batch created keys
   const batchEmails = new Set();
   const batchPhones = new Set();
   const batchWebsites = new Set();
@@ -221,16 +247,20 @@ const commitImport = async (recordsToImport, customSender = {}, duplicateAction 
 
     item.title = normalizeString(leadTitle);
     const cleanEmail = normalizeEmail(item.email);
-    const cleanPhoneDigits = normalizePhoneDigits(item.phone);
-    const cleanWeb = normalizeWebsite(item.website);
+    const cleanPhone = extractCleanPhone(item.phone);
+    const cleanWeb = normalizeWebsiteDomain(item.website);
 
     // Check existing lead in DB
     const queryConditions = [];
-    if (cleanEmail && isValidEmail(cleanEmail)) queryConditions.push({ email: cleanEmail });
-    if (cleanPhoneDigits && cleanPhoneDigits.length >= 7) {
-      queryConditions.push({ phone: { $regex: cleanPhoneDigits.slice(-10) } });
+    if (cleanEmail) {
+      queryConditions.push({ email: cleanEmail });
     }
-    if (cleanWeb) queryConditions.push({ website: { $regex: cleanWeb, $options: 'i' } });
+    if (cleanPhone) {
+      queryConditions.push({ phone: { $regex: `${escapeRegex(cleanPhone)}$` } });
+    }
+    if (cleanWeb) {
+      queryConditions.push({ website: { $regex: escapeRegex(cleanWeb), $options: 'i' } });
+    }
 
     let existingLead = null;
     if (queryConditions.length > 0) {
@@ -239,7 +269,7 @@ const commitImport = async (recordsToImport, customSender = {}, duplicateAction 
 
     const inBatchDup =
       (cleanEmail && batchEmails.has(cleanEmail)) ||
-      (cleanPhoneDigits && cleanPhoneDigits.length >= 7 && batchPhones.has(cleanPhoneDigits)) ||
+      (cleanPhone && batchPhones.has(cleanPhone)) ||
       (cleanWeb && batchWebsites.has(cleanWeb));
 
     if (existingLead || inBatchDup) {
@@ -298,8 +328,8 @@ const commitImport = async (recordsToImport, customSender = {}, duplicateAction 
     createdCount++;
     importedLeads.push(newLead);
 
-    if (cleanEmail && isValidEmail(cleanEmail)) batchEmails.add(cleanEmail);
-    if (cleanPhoneDigits && cleanPhoneDigits.length >= 7) batchPhones.add(cleanPhoneDigits);
+    if (cleanEmail) batchEmails.add(cleanEmail);
+    if (cleanPhone) batchPhones.add(cleanPhone);
     if (cleanWeb) batchWebsites.add(cleanWeb);
   }
 
