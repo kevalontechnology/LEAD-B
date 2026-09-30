@@ -26,14 +26,18 @@ const getLeads = async (req, res, next) => {
 
     const query = {};
 
-    // Search query across title, phone, email, city, categoryName
+    // Search query across title, phone, email, city, categoryName, contactPerson, address
     if (search) {
+      const escapeRegex = (str) => str.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+      const cleanSearch = escapeRegex(search.trim());
       query.$or = [
-        { title: { $regex: search, $options: 'i' } },
-        { phone: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } },
-        { city: { $regex: search, $options: 'i' } },
-        { categoryName: { $regex: search, $options: 'i' } }
+        { title: { $regex: cleanSearch, $options: 'i' } },
+        { phone: { $regex: cleanSearch, $options: 'i' } },
+        { email: { $regex: cleanSearch, $options: 'i' } },
+        { city: { $regex: cleanSearch, $options: 'i' } },
+        { categoryName: { $regex: cleanSearch, $options: 'i' } },
+        { contactPerson: { $regex: cleanSearch, $options: 'i' } },
+        { address: { $regex: cleanSearch, $options: 'i' } }
       ];
     }
 
