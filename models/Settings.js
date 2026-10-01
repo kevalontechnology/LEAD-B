@@ -26,7 +26,24 @@ const settingsSchema = new mongoose.Schema(
       type: String,
       default: 'CEO & Founder'
     },
-    // SMTP Settings
+    // Brevo (Sendinblue) Email Settings
+    brevoApiKey: {
+      type: String,
+      default: ''
+    },
+    brevoSenderEmail: {
+      type: String,
+      default: 'sales@kevalontechnology.in'
+    },
+    brevoSenderName: {
+      type: String,
+      default: 'Harsh Kothari | Kevalon Technology'
+    },
+    brevoTemplateId: {
+      type: Number,
+      default: 0
+    },
+    // Legacy / Nodemailer SMTP Settings
     smtpHost: {
       type: String,
       default: ''

@@ -6,7 +6,7 @@ const Communication = require('../models/Communication');
 const { logAudit } = require('./auditLogService');
 
 /**
- * Send a transactional email to a single lead (Nodemailer SMTP / Brevo API / Simulation)
+ * Send a transactional email to a single lead via Brevo API (or SMTP / Simulation)
  */
 const sendEmailMessage = async ({ leadId, customSubject, customBody, userId }) => {
   const lead = await Lead.findById(leadId);
@@ -32,82 +32,45 @@ const sendEmailMessage = async ({ leadId, customSubject, customBody, userId }) =
 
   const settings = await Settings.findOne();
 
-  const senderName = settings?.smtpFromName || settings?.senderName || process.env.BREVO_SENDER_NAME || 'Harsh Kothari | Kevalon Technology';
-  const senderEmail = settings?.smtpFromEmail || settings?.email || process.env.BREVO_SENDER_EMAIL || 'sales@kevalontechnology.in';
+  // Brevo Parameters (from Settings DB or process.env)
+  const brevoApiKey = settings?.brevoApiKey || process.env.BREVO_API_KEY;
+  const brevoSenderEmail = settings?.brevoSenderEmail || process.env.BREVO_SENDER_EMAIL || settings?.email || 'sales@kevalontechnology.in';
+  const brevoSenderName = settings?.brevoSenderName || process.env.BREVO_SENDER_NAME || settings?.senderName || 'Harsh Kothari | Kevalon Technology';
+  const brevoTemplateId = Number(settings?.brevoTemplateId || process.env.BREVO_LEAD_TEMPLATE_ID || 0);
 
-  let sendSuccess = false;
-  let responseData = null;
-  let errorMessage = null;
-
-  // Option A: Nodemailer SMTP (Settings DB or .env)
+  // Secondary SMTP Parameters
   const smtpHost = settings?.smtpHost || process.env.SMTP_HOST;
   const smtpPort = Number(settings?.smtpPort || process.env.SMTP_PORT || 587);
   const smtpUser = settings?.smtpUsername || process.env.SMTP_USER;
   const smtpPass = settings?.smtpPassword || process.env.SMTP_PASS;
 
-  const hasSmtpConfig = Boolean(smtpHost && smtpUser && smtpPass);
-  const hasBrevoKey = Boolean(process.env.BREVO_API_KEY);
+  let sendSuccess = false;
+  let responseData = null;
+  let errorMessage = null;
 
-  if (hasSmtpConfig) {
+  // Primary Choice: Brevo Transactional API
+  if (brevoApiKey && brevoApiKey.trim() !== '') {
     try {
-      const isSecure = smtpPort === 465;
-      const transporter = nodemailer.createTransport({
-        host: smtpHost,
-        port: smtpPort,
-        secure: isSecure,
-        auth: {
-          user: smtpUser,
-          pass: smtpPass
-        },
-        tls: {
-          rejectUnauthorized: false
-        },
-        connectionTimeout: 15000,
-        greetingTimeout: 15000
-      });
-
-      const formattedHtml = bodyText.replace(/\n/g, '<br/>');
-
-      const info = await transporter.sendMail({
-        from: `"${senderName}" <${senderEmail}>`,
-        to: lead.email,
-        subject: subjectText,
-        text: bodyText,
-        html: `<div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #1e293b;">${formattedHtml}</div>`
-      });
-
-      sendSuccess = true;
-      responseData = {
-        engine: 'SMTP',
-        messageId: info.messageId,
-        response: info.response
-      };
-    } catch (err) {
-      errorMessage = `SMTP Dispatch Error (${smtpHost}): ${err.message}`;
-    }
-  } else if (hasBrevoKey) {
-    try {
-      const formattedHtml = bodyText.replace(/\n/g, '<br/>');
-      const templateId = Number(process.env.BREVO_LEAD_TEMPLATE_ID);
+      const formattedHtml = `<div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #1e293b;">${bodyText.replace(/\n/g, '<br/>')}</div>`;
 
       const payload = {
         sender: {
-          email: process.env.BREVO_SENDER_EMAIL || senderEmail,
-          name: process.env.BREVO_SENDER_NAME || senderName
+          email: brevoSenderEmail.trim(),
+          name: brevoSenderName.trim()
         },
         to: [
           {
-            email: lead.email,
+            email: lead.email.trim(),
             name: lead.contactPerson || lead.title
           }
         ],
-        subject: subjectText,
-        htmlContent: `<div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #1e293b;">${formattedHtml}</div>`,
+        subject: subjectText.trim(),
+        htmlContent: formattedHtml,
         textContent: bodyText
       };
 
-      if (templateId > 0) {
-        payload.templateId = templateId;
+      if (brevoTemplateId > 0) {
+        payload.templateId = brevoTemplateId;
         payload.params = { generatedEmailBody: bodyText };
       }
 
@@ -117,7 +80,7 @@ const sendEmailMessage = async ({ leadId, customSubject, customBody, userId }) =
         {
           headers: {
             accept: 'application/json',
-            'api-key': process.env.BREVO_API_KEY,
+            'api-key': brevoApiKey.trim(),
             'content-type': 'application/json'
           },
           timeout: 15000
@@ -137,12 +100,47 @@ const sendEmailMessage = async ({ leadId, customSubject, customBody, userId }) =
         ? `Brevo API Error (${status})${providerMessage ? `: ${providerMessage}` : ''}`
         : err.message || 'Brevo API request failed';
     }
+  } else if (smtpHost && smtpUser && smtpPass) {
+    // Secondary Choice: Nodemailer SMTP
+    try {
+      const isSecure = smtpPort === 465;
+      const transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: smtpPort,
+        secure: isSecure,
+        auth: {
+          user: smtpUser,
+          pass: smtpPass
+        },
+        tls: { rejectUnauthorized: false },
+        connectionTimeout: 15000
+      });
+
+      const formattedHtml = `<div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #1e293b;">${bodyText.replace(/\n/g, '<br/>')}</div>`;
+
+      const info = await transporter.sendMail({
+        from: `"${brevoSenderName}" <${brevoSenderEmail}>`,
+        to: lead.email,
+        subject: subjectText,
+        text: bodyText,
+        html: formattedHtml
+      });
+
+      sendSuccess = true;
+      responseData = {
+        engine: 'SMTP',
+        messageId: info.messageId,
+        response: info.response
+      };
+    } catch (err) {
+      errorMessage = `SMTP Dispatch Error (${smtpHost}): ${err.message}`;
+    }
   } else {
-    // Option C: Simulation Fallback (for testing / demo mode)
+    // Fallback: Brevo Simulation Mode (for testing/demo)
     sendSuccess = true;
     responseData = {
-      engine: 'SIMULATION',
-      message: 'Simulated Email dispatch. Configure Nodemailer SMTP in Settings page for live inbox delivery.'
+      engine: 'BREVO_SIMULATION',
+      message: 'Simulated Brevo Email dispatch. Enter your Brevo API Key under Settings for live inbox delivery.'
     };
   }
 
@@ -168,7 +166,7 @@ const sendEmailMessage = async ({ leadId, customSubject, customBody, userId }) =
       user: userId,
       action: 'EMAIL_SENT',
       leadId: lead._id,
-      details: `Email sent to ${lead.email} ("${lead.title}") via ${responseData?.engine}`
+      details: `Brevo Email sent to ${lead.email} ("${lead.title}") via ${responseData?.engine}`
     });
 
     return {
@@ -198,10 +196,10 @@ const sendEmailMessage = async ({ leadId, customSubject, customBody, userId }) =
       user: userId,
       action: 'EMAIL_FAILED',
       leadId: lead._id,
-      details: `Email failed for ${lead.email}: ${errorMessage}`
+      details: `Brevo Email failed for ${lead.email}: ${errorMessage}`
     });
 
-    throw new Error(errorMessage || 'Failed to send email outreach');
+    throw new Error(errorMessage || 'Failed to send email via Brevo');
   }
 };
 
