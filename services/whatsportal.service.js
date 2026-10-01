@@ -155,8 +155,66 @@ const sendWhatsPortalNotification = async (data = {}) => {
   }
 };
 
+const sendWhatsPortalDirectMessage = async ({ phone, message, apiKey, apiBaseUrl }) => {
+  const phoneInfo = normalizePhoneNumber(phone);
+  if (!phoneInfo.valid) {
+    return { success: false, error: phoneInfo.error };
+  }
+
+  const token = apiKey || process.env.WHATSPORTAL_API_KEY || 'wp_live_7gorCETjlPx2m05s6DJxDXozUPyX56Jg049D2l';
+  const baseUrl = (apiBaseUrl || process.env.WHATSPORTAL_API_BASE_URL || 'https://app.whatsportal.io/api').replace(/\/+$/, '');
+
+  const endpoints = [
+    `${baseUrl}/v1/messages/send`,
+    `${baseUrl}/messages/send`,
+    `${baseUrl}/messages`,
+    `https://app.whatsportal.io/api/v1/messages/send`
+  ];
+
+  const payload = {
+    phone: phoneInfo.normalized,
+    recipient: phoneInfo.normalized,
+    to: phoneInfo.normalized,
+    message: message,
+    text: message,
+    body: message
+  };
+
+  let lastError = null;
+
+  for (const endpoint of endpoints) {
+    try {
+      console.log(`[WhatsPortal Direct API] Attempting send to ${endpoint}...`);
+      const response = await axios.post(endpoint, payload, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'x-api-key': token,
+          'Content-Type': 'application/json'
+        },
+        timeout: 10000
+      });
+
+      if (response.status >= 200 && response.status < 300) {
+        console.log(`[WhatsPortal Direct API] Success via ${endpoint}:`, response.data);
+        return {
+          success: true,
+          endpoint,
+          responseData: response.data,
+          messageId: response.data?.id || response.data?.messageId || response.data?.data?.id || null
+        };
+      }
+    } catch (err) {
+      lastError = err.response?.data?.message || err.message;
+      console.error(`[WhatsPortal Direct API Error] ${endpoint}:`, lastError);
+    }
+  }
+
+  return { success: false, error: lastError || 'Failed to send via WhatsPortal Direct API' };
+};
+
 module.exports = {
   normalizePhoneNumber,
   buildWhatsPortalPayload,
-  sendWhatsPortalNotification
+  sendWhatsPortalNotification,
+  sendWhatsPortalDirectMessage
 };

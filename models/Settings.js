@@ -96,6 +96,14 @@ fqJ7u3ICKhLg1uuIXvlIyqPh1LrZRVPKnVdE1T6hcsEcOL6po8wQObmbxl8Vjjk2
 uCSmIjSlkKN4W1QTq+b/icYORytWGgb9TEUHv+6D7JaQGgvfc+gx6Z0aJTPh4FMn
 RwIDAQAB
 -----END PUBLIC KEY-----`
+    },
+    whatsportalApiKey: {
+      type: String,
+      default: 'wp_live_7gorCETjlPx2m05s6DJxDXozUPyX56Jg049D2l'
+    },
+    whatsportalApiBaseUrl: {
+      type: String,
+      default: 'https://app.whatsportal.io/api'
     }
   },
   { timestamps: true }

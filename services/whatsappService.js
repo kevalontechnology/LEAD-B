@@ -3,7 +3,7 @@ const Lead = require('../models/Lead');
 const Communication = require('../models/Communication');
 const Settings = require('../models/Settings');
 const { logAudit } = require('./auditLogService');
-const { sendWhatsPortalNotification } = require('./whatsportal.service');
+const { sendWhatsPortalNotification, sendWhatsPortalDirectMessage } = require('./whatsportal.service');
 
 /**
  * Send WhatsApp message to a single lead
@@ -47,17 +47,37 @@ const sendWhatsAppMessage = async ({ leadId, customMessage, userId, force = fals
 
   // Fetch WhatsApp settings
   const settings = await Settings.findOne();
-  const accessToken = settings?.whatsappAccessToken || process.env.WHATSAPP_ACCESS_TOKEN;
+  const whatsportalApiKey = settings?.whatsportalApiKey || process.env.WHATSPORTAL_API_KEY || 'wp_live_7gorCETjlPx2m05s6DJxDXozUPyX56Jg049D2l';
+  const whatsportalApiBaseUrl = settings?.whatsportalApiBaseUrl || process.env.WHATSPORTAL_API_BASE_URL || 'https://app.whatsportal.io/api';
+
+  const accessToken = settings?.whatsappAccessToken || process.env.WHATSAPP_ACCESS_TOKEN || whatsportalApiKey;
   const phoneNumberId = settings?.whatsappPhoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID || '285349974658896';
   const apiVersion = settings?.whatsappApiVersion || process.env.WHATSAPP_API_VERSION || 'v18.0';
-  const publicKey = settings?.whatsappPublicKey || process.env.WHATSAPP_PUBLIC_KEY;
 
   let apiSuccess = false;
   let apiResponseData = null;
   let errorMessage = null;
 
-  // Check if official Cloud API credentials are provided
-  if (accessToken && phoneNumberId) {
+  // 1. First attempt via WhatsPortal Direct API (wp_live_...)
+  if (whatsportalApiKey) {
+    console.log(`[WhatsPortal Direct API Send] Sending message to ${recipientPhone}...`);
+    const directResult = await sendWhatsPortalDirectMessage({
+      phone: recipientPhone,
+      message: messageText,
+      apiKey: whatsportalApiKey,
+      apiBaseUrl: whatsportalApiBaseUrl
+    });
+
+    if (directResult.success) {
+      apiSuccess = true;
+      apiResponseData = directResult.responseData;
+    } else {
+      errorMessage = directResult.error;
+    }
+  }
+
+  // 2. Fallback / Parallel attempt via Meta Graph API if accessToken & phoneNumberId available
+  if (!apiSuccess && accessToken && phoneNumberId && !accessToken.startsWith('wp_live_')) {
     try {
       const url = `https://graph.facebook.com/${apiVersion}/${phoneNumberId}/messages`;
       const payload = {
@@ -79,16 +99,12 @@ const sendWhatsAppMessage = async ({ leadId, customMessage, userId, force = fals
       if (response.status === 200 || response.status === 201) {
         apiSuccess = true;
         apiResponseData = response.data;
+        errorMessage = null;
       }
     } catch (error) {
       errorMessage = error.response?.data?.error?.message || error.message;
-      console.error(`[WhatsApp API Error] for Lead ${lead.title}:`, errorMessage);
+      console.error(`[WhatsApp Meta API Error] for Lead ${lead.title}:`, errorMessage);
     }
-  } else {
-    // Local development mode / Simulation mode when API keys are not provided
-    console.log(`[WhatsApp API Simulation] Sending message to ${recipientPhone} for ${lead.title}...`);
-    apiSuccess = true; // Simulated success for local dev testing
-    apiResponseData = { simulation: true, messageId: `wamid.simulated_${Date.now()}` };
   }
 
   // Update lead status based on explicit API outcome
