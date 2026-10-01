@@ -75,6 +75,16 @@ const getLeads = async (req, res, next) => {
         case 'CONVERTED':
           query.leadStatus = 'CONVERTED';
           break;
+        case 'HAS_MOBILE':
+          query.phone = { $exists: true, $ne: null, $ne: '' };
+          break;
+        case 'HAS_EMAIL':
+          query.email = { $exists: true, $ne: null, $ne: '' };
+          break;
+        case 'HAS_BOTH':
+          query.phone = { $exists: true, $ne: null, $ne: '' };
+          query.email = { $exists: true, $ne: null, $ne: '' };
+          break;
       }
     }
 

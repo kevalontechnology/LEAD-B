@@ -34,12 +34,44 @@ const getDashboardStats = async (req, res, next) => {
     const interestedLeads = await Lead.countDocuments({ leadStatus: 'INTERESTED' });
     const convertedLeads = await Lead.countDocuments({ leadStatus: 'CONVERTED' });
 
+    // Contact Availability Statistics
+    const hasPhoneQuery = { phone: { $exists: true, $ne: null, $ne: '' } };
+    const hasEmailQuery = { email: { $exists: true, $ne: null, $ne: '' } };
+
+    const mobileAvailable = await Lead.countDocuments(hasPhoneQuery);
+    const emailAvailable = await Lead.countDocuments(hasEmailQuery);
+    const bothAvailable = await Lead.countDocuments({
+      $and: [hasPhoneQuery, hasEmailQuery]
+    });
+
     // Chart Data 1: Complete Category Breakdown for ALL Categories
     const categoryAgg = await Lead.aggregate([
       {
         $group: {
           _id: { $ifNull: ['$categoryName', 'General / Uncategorized'] },
           count: { $sum: 1 },
+          mobileAvailable: {
+            $sum: { $cond: [{ $and: [{ $ne: ['$phone', null] }, { $ne: ['$phone', ''] }] }, 1, 0] }
+          },
+          emailAvailable: {
+            $sum: { $cond: [{ $and: [{ $ne: ['$email', null] }, { $ne: ['$email', ''] }] }, 1, 0] }
+          },
+          bothAvailable: {
+            $sum: {
+              $cond: [
+                {
+                  $and: [
+                    { $ne: ['$phone', null] },
+                    { $ne: ['$phone', ''] },
+                    { $ne: ['$email', null] },
+                    { $ne: ['$email', ''] }
+                  ]
+                },
+                1,
+                0
+              ]
+            }
+          },
           messageReady: {
             $sum: { $cond: [{ $eq: ['$leadStatus', 'MESSAGE_READY'] }, 1, 0] }
           },
@@ -82,6 +114,9 @@ const getDashboardStats = async (req, res, next) => {
       cards: {
         totalLeads,
         newLeads,
+        mobileAvailable,
+        emailAvailable,
+        bothAvailable,
         messagesReady,
         whatsappSent,
         emailSent,
@@ -95,6 +130,9 @@ const getDashboardStats = async (req, res, next) => {
         byCategory: categoryAgg.map((c) => ({
           category: c._id || 'General',
           count: c.count,
+          mobileAvailable: c.mobileAvailable || 0,
+          emailAvailable: c.emailAvailable || 0,
+          bothAvailable: c.bothAvailable || 0,
           messageReady: c.messageReady,
           whatsappSent: c.whatsappSent,
           emailSent: c.emailSent,
