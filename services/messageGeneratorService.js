@@ -1,13 +1,27 @@
 const { detectCategoryType, CATEGORY_TYPES } = require('../utils/categoryRules');
 
-const DEFAULT_SENDER = {
-  senderName: 'Harsh Kothari',
-  senderTitle: 'CEO & Founder',
-  senderCompany: 'Kevalon Technology',
-  senderPhone: '+91 90810 12218',
-  senderEmail: 'sales@kevalontechnology.in',
-  senderWebsite: 'www.kevalontechnology.in'
+const SENDER_PERSONAS = {
+  CEO: {
+    senderPersona: 'CEO',
+    senderName: 'Harsh Kothari',
+    senderTitle: 'CEO & Founder',
+    senderCompany: 'Kevalon Technology',
+    senderPhone: '+91 90810 12218',
+    senderEmail: 'sales@kevalontechnology.in',
+    senderWebsite: 'www.kevalontechnology.in'
+  },
+  SALES: {
+    senderPersona: 'SALES',
+    senderName: 'Varun',
+    senderTitle: 'Sales Executive',
+    senderCompany: 'Kevalon Technology',
+    senderPhone: '+91 90810 12218',
+    senderEmail: 'sales@kevalontechnology.in',
+    senderWebsite: 'www.kevalontechnology.in'
+  }
 };
+
+const DEFAULT_SENDER = SENDER_PERSONAS.CEO;
 
 /**
  * Replace placeholders like {{companyName}}, {{category}}, etc.
@@ -29,7 +43,18 @@ const replaceVariables = (templateStr, data) => {
  * Generate category-specific WhatsApp and Email messages for a lead
  */
 const generateLeadMessages = (lead, customSender = {}) => {
-  const sender = { ...DEFAULT_SENDER, ...customSender };
+  let baseSender = SENDER_PERSONAS.CEO;
+
+  if (customSender) {
+    const p = String(customSender.senderPersona || customSender.persona || customSender.senderName || '').toUpperCase();
+    if (p.includes('SALES') || p.includes('VARUN')) {
+      baseSender = SENDER_PERSONAS.SALES;
+    } else if (p.includes('CEO') || p.includes('HARSH')) {
+      baseSender = SENDER_PERSONAS.CEO;
+    }
+  }
+
+  const sender = { ...baseSender, ...customSender };
   const company = lead.title || 'Team';
   const contactPerson = lead.contactPerson ? ` ${lead.contactPerson}` : '';
   const greeting = lead.contactPerson
@@ -317,6 +342,7 @@ Phone: ${sender.senderPhone}`;
 };
 
 module.exports = {
+  SENDER_PERSONAS,
   DEFAULT_SENDER,
   replaceVariables,
   generateLeadMessages

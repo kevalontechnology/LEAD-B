@@ -309,23 +309,24 @@ const previewImportExcel = async (req, res, next) => {
 // @access  Private
 const confirmImportExcel = async (req, res, next) => {
   try {
-    const { records, duplicateAction = 'SKIP' } = req.body;
+    const { records, duplicateAction = 'SKIP', senderPersona = 'CEO' } = req.body;
 
     if (!Array.isArray(records) || records.length === 0) {
       return res.status(400).json({ success: false, message: 'No valid records provided for import' });
     }
 
     const settings = await Settings.findOne();
-    const customSender = settings
-      ? {
-          senderName: settings.senderName,
-          senderTitle: settings.designation,
-          senderCompany: settings.companyName,
-          senderPhone: settings.phone,
-          senderEmail: settings.email,
-          senderWebsite: settings.website
-        }
-      : {};
+    const customSender = {
+      senderPersona,
+      ...(settings
+        ? {
+            senderCompany: settings.companyName,
+            senderPhone: settings.phone,
+            senderEmail: settings.email,
+            senderWebsite: settings.website
+          }
+        : {})
+    };
 
     const commitResult = await commitImport(records, customSender, duplicateAction);
     const databaseTotal = await Lead.countDocuments();
@@ -394,17 +395,19 @@ const regenerateLeadMessage = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Lead not found' });
     }
 
+    const { senderPersona } = req.body;
     const settings = await Settings.findOne();
-    const customSender = settings
-      ? {
-          senderName: settings.senderName,
-          senderTitle: settings.designation,
-          senderCompany: settings.companyName,
-          senderPhone: settings.phone,
-          senderEmail: settings.email,
-          senderWebsite: settings.website
-        }
-      : {};
+    const customSender = {
+      senderPersona: senderPersona || (settings ? settings.senderName : 'CEO'),
+      ...(settings
+        ? {
+            senderCompany: settings.companyName,
+            senderPhone: settings.phone,
+            senderEmail: settings.email,
+            senderWebsite: settings.website
+          }
+        : {})
+    };
 
     const generated = generateLeadMessages(lead, customSender);
     lead.generatedWhatsAppMessage = generated.generatedWhatsAppMessage;
