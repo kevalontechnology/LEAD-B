@@ -50,6 +50,7 @@ const sendWhatsAppMessage = async ({ leadId, customMessage, userId }) => {
   const accessToken = settings?.whatsappAccessToken || process.env.WHATSAPP_ACCESS_TOKEN;
   const phoneNumberId = settings?.whatsappPhoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID;
   const apiVersion = settings?.whatsappApiVersion || process.env.WHATSAPP_API_VERSION || 'v18.0';
+  const publicKey = settings?.whatsappPublicKey || process.env.WHATSAPP_PUBLIC_KEY;
 
   let apiSuccess = false;
   let apiResponseData = null;
