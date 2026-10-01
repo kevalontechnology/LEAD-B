@@ -75,11 +75,11 @@ const settingsSchema = new mongoose.Schema(
     },
     whatsappPhoneNumberId: {
       type: String,
-      default: ''
+      default: '285349974658896'
     },
     whatsappBusinessAccountId: {
       type: String,
-      default: ''
+      default: '250264581511046'
     },
     whatsappApiVersion: {
       type: String,

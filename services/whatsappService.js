@@ -8,13 +8,13 @@ const { sendWhatsPortalNotification } = require('./whatsportal.service');
 /**
  * Send WhatsApp message to a single lead
  */
-const sendWhatsAppMessage = async ({ leadId, customMessage, userId }) => {
+const sendWhatsAppMessage = async ({ leadId, customMessage, userId, force = false }) => {
   const lead = await Lead.findById(leadId);
   if (!lead) {
     throw new Error('Lead not found');
   }
 
-  if (lead.whatsappNotificationSent) {
+  if (lead.whatsappNotificationSent && !force && !customMessage) {
     return {
       success: true,
       leadId: lead._id,
@@ -48,7 +48,7 @@ const sendWhatsAppMessage = async ({ leadId, customMessage, userId }) => {
   // Fetch WhatsApp settings
   const settings = await Settings.findOne();
   const accessToken = settings?.whatsappAccessToken || process.env.WHATSAPP_ACCESS_TOKEN;
-  const phoneNumberId = settings?.whatsappPhoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID;
+  const phoneNumberId = settings?.whatsappPhoneNumberId || process.env.WHATSAPP_PHONE_NUMBER_ID || '285349974658896';
   const apiVersion = settings?.whatsappApiVersion || process.env.WHATSAPP_API_VERSION || 'v18.0';
   const publicKey = settings?.whatsappPublicKey || process.env.WHATSAPP_PUBLIC_KEY;
 
