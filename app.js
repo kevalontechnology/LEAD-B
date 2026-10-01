@@ -19,6 +19,7 @@ const communicationRoutes = require('./routes/communicationRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const settingsRoutes = require('./routes/settingsRoutes');
 const auditLogRoutes = require('./routes/auditLogRoutes');
+const webhookRoutes = require('./routes/webhookRoutes');
 
 const app = express();
 
@@ -45,6 +46,7 @@ app.use('/api/communications', communicationRoutes);
 app.use('/api/reports', dashboardRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/audit-logs', auditLogRoutes);
+app.use('/api/webhooks', webhookRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
