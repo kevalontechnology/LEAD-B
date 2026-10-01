@@ -1,5 +1,6 @@
 const Lead = require('../models/Lead');
 const Settings = require('../models/Settings');
+const ApprovalRequest = require('../models/ApprovalRequest');
 const { parseExcelFile, previewImport, commitImport } = require('../services/excelService');
 const { generateLeadMessages } = require('../services/messageGeneratorService');
 const { logAudit } = require('../services/auditLogService');
@@ -199,6 +200,37 @@ const updateLead = async (req, res, next) => {
       return res.status(404).json({ success: false, message: 'Lead not found' });
     }
 
+    // Check if logged-in user is SALES role
+    const isSalesRole = req.user && req.user.role === 'SALES';
+
+    if (isSalesRole) {
+      // Sales person CANNOT directly edit the lead in DB. Create pending approval request.
+      const approval = await ApprovalRequest.create({
+        leadId: lead._id,
+        leadTitle: lead.title || 'Untitled Lead',
+        requestedBy: req.user._id,
+        requestedByName: req.user.name || 'Sales Person',
+        actionType: 'UPDATE',
+        proposedChanges: req.body,
+        originalData: lead.toObject()
+      });
+
+      await logAudit({
+        user: req.user._id,
+        action: 'LEAD_EDIT_REQUESTED',
+        leadId: lead._id,
+        details: `Sales user ${req.user.name} submitted an edit request for "${lead.title}". Awaiting Admin Approval.`
+      });
+
+      return res.json({
+        success: true,
+        pendingApproval: true,
+        approvalId: approval._id,
+        message: 'Your edit request has been submitted for Admin approval. Changes will be applied after Admin approves.'
+      });
+    }
+
+    // Admin / Manager directly updates lead
     Object.assign(lead, req.body);
     await lead.save();
 
@@ -220,6 +252,13 @@ const updateLead = async (req, res, next) => {
 // @access  Private
 const deleteLead = async (req, res, next) => {
   try {
+    if (req.user && req.user.role === 'SALES') {
+      return res.status(403).json({
+        success: false,
+        message: 'Sales role is not authorized to delete leads. Only Admin can delete.'
+      });
+    }
+
     const lead = await Lead.findById(req.params.id);
     if (!lead) {
       return res.status(404).json({ success: false, message: 'Lead not found' });
@@ -245,6 +284,13 @@ const deleteLead = async (req, res, next) => {
 // @access  Private
 const bulkDeleteLeads = async (req, res, next) => {
   try {
+    if (req.user && req.user.role === 'SALES') {
+      return res.status(403).json({
+        success: false,
+        message: 'Sales role is not authorized to bulk delete leads. Only Admin can delete.'
+      });
+    }
+
     const { leadIds } = req.body;
     if (!Array.isArray(leadIds) || leadIds.length === 0) {
       return res.status(400).json({ success: false, message: 'Please provide an array of lead IDs' });

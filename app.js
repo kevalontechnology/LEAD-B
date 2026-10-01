@@ -20,6 +20,7 @@ const dashboardRoutes = require('./routes/dashboardRoutes');
 const settingsRoutes = require('./routes/settingsRoutes');
 const auditLogRoutes = require('./routes/auditLogRoutes');
 const webhookRoutes = require('./routes/webhookRoutes');
+const approvalRoutes = require('./routes/approvalRoutes');
 
 const app = express();
 
@@ -47,6 +48,7 @@ app.use('/api/reports', dashboardRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/audit-logs', auditLogRoutes);
 app.use('/api/webhooks', webhookRoutes);
+app.use('/api/approvals', approvalRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
