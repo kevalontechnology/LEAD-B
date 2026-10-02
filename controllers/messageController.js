@@ -49,20 +49,36 @@ const sendSingleEmail = async (req, res, next) => {
   }
 };
 
-// @desc    Bulk send WhatsApp, Email, or Both to user-selected leads
+// @desc    Bulk send WhatsApp, Email, or Both to user-selected leads or filtered criteria
 // @route   POST /api/leads/messages/bulk-send
 // @access  Private
 const bulkSendMessages = async (req, res, next) => {
   try {
-    const { leadIds, channel = 'WHATSAPP' } = req.body;
+    const { leadIds, channel = 'WHATSAPP', filter, category } = req.body;
     const upperChannel = String(channel || 'WHATSAPP').toUpperCase();
 
-    if (!Array.isArray(leadIds) || leadIds.length === 0) {
-      return res.status(400).json({ success: false, message: 'Please select at least one lead' });
+    let leads = [];
+    if (Array.isArray(leadIds) && leadIds.length > 0) {
+      leads = await Lead.find({ _id: { $in: leadIds } });
+    } else if (filter || upperChannel) {
+      const query = {};
+      const targetFilter = filter || (upperChannel === 'EMAIL' ? 'HAS_EMAIL' : 'HAS_MOBILE');
+
+      if (targetFilter === 'HAS_EMAIL') query.email = { $exists: true, $ne: null, $ne: '' };
+      else if (targetFilter === 'HAS_MOBILE') query.phone = { $exists: true, $ne: null, $ne: '' };
+      else if (targetFilter === 'HAS_BOTH') {
+        query.email = { $exists: true, $ne: null, $ne: '' };
+        query.phone = { $exists: true, $ne: null, $ne: '' };
+      }
+
+      if (category) query.categoryName = { $regex: category, $options: 'i' };
+      leads = await Lead.find(query);
     }
 
-    // Fetch leads and check DO_NOT_CONTACT
-    const leads = await Lead.find({ _id: { $in: leadIds } });
+    if (!leads || leads.length === 0) {
+      return res.status(400).json({ success: false, message: 'No matching leads found for bulk dispatch' });
+    }
+
     const eligibleLeads = leads.filter((l) => l.leadStatus !== 'DO_NOT_CONTACT');
     const skippedDoNotContactCount = leads.length - eligibleLeads.length;
 
