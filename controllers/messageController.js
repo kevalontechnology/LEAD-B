@@ -49,18 +49,19 @@ const sendSingleEmail = async (req, res, next) => {
   }
 };
 
-// @desc    Bulk send WhatsApp, Email, or Both to user-selected leads or filtered criteria
+// @desc    Bulk send WhatsApp, Email, or Both to user-selected leads or ALL database leads
 // @route   POST /api/leads/messages/bulk-send
 // @access  Private
 const bulkSendMessages = async (req, res, next) => {
   try {
-    const { leadIds, channel = 'WHATSAPP', filter, category } = req.body;
+    const { leadIds, channel = 'WHATSAPP', filter, category, sendAllDatabase = false } = req.body;
     const upperChannel = String(channel || 'WHATSAPP').toUpperCase();
 
     let leads = [];
-    if (Array.isArray(leadIds) && leadIds.length > 0) {
+    if (!sendAllDatabase && Array.isArray(leadIds) && leadIds.length > 0) {
       leads = await Lead.find({ _id: { $in: leadIds } });
-    } else if (filter || upperChannel) {
+    } else {
+      // Query ALL leads in the entire database matching filter & category across all pages
       const query = {};
       const targetFilter = filter || (upperChannel === 'EMAIL' ? 'HAS_EMAIL' : 'HAS_MOBILE');
 
@@ -76,7 +77,7 @@ const bulkSendMessages = async (req, res, next) => {
     }
 
     if (!leads || leads.length === 0) {
-      return res.status(400).json({ success: false, message: 'No matching leads found for bulk dispatch' });
+      return res.status(400).json({ success: false, message: 'No matching leads found in database for bulk dispatch' });
     }
 
     const eligibleLeads = leads.filter((l) => l.leadStatus !== 'DO_NOT_CONTACT');
