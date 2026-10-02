@@ -1,15 +1,6 @@
 const { detectCategoryType, CATEGORY_TYPES } = require('../utils/categoryRules');
 
 const SENDER_PERSONAS = {
-  CEO: {
-    senderPersona: 'CEO',
-    senderName: 'Harsh Kothari',
-    senderTitle: 'CEO & Founder',
-    senderCompany: 'Kevalon Technology',
-    senderPhone: '+91 90810 12218',
-    senderEmail: 'sales@kevalontechnology.in',
-    senderWebsite: 'www.kevalontechnology.in'
-  },
   SALES: {
     senderPersona: 'SALES',
     senderName: 'Varun',
@@ -18,10 +9,19 @@ const SENDER_PERSONAS = {
     senderPhone: '+91 90810 12218',
     senderEmail: 'sales@kevalontechnology.in',
     senderWebsite: 'www.kevalontechnology.in'
+  },
+  CEO: {
+    senderPersona: 'CEO',
+    senderName: 'Harsh Kothari',
+    senderTitle: 'CEO & Founder',
+    senderCompany: 'Kevalon Technology',
+    senderPhone: '+91 90810 12218',
+    senderEmail: 'sales@kevalontechnology.in',
+    senderWebsite: 'www.kevalontechnology.in'
   }
 };
 
-const DEFAULT_SENDER = SENDER_PERSONAS.CEO;
+const DEFAULT_SENDER = SENDER_PERSONAS.SALES;
 
 /**
  * Replace placeholders like {{companyName}}, {{category}}, etc.
@@ -43,14 +43,14 @@ const replaceVariables = (templateStr, data) => {
  * Generate category-specific WhatsApp and Email messages for a lead
  */
 const generateLeadMessages = (lead, customSender = {}) => {
-  let baseSender = SENDER_PERSONAS.CEO;
+  let baseSender = SENDER_PERSONAS.SALES;
 
   if (customSender) {
     const p = String(customSender.senderPersona || customSender.persona || customSender.senderName || '').toUpperCase();
-    if (p.includes('SALES') || p.includes('VARUN')) {
-      baseSender = SENDER_PERSONAS.SALES;
-    } else if (p.includes('CEO') || p.includes('HARSH')) {
+    if (p.includes('CEO') || p.includes('HARSH')) {
       baseSender = SENDER_PERSONAS.CEO;
+    } else {
+      baseSender = SENDER_PERSONAS.SALES;
     }
   }
 

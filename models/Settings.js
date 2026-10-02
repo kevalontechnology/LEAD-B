@@ -20,11 +20,11 @@ const settingsSchema = new mongoose.Schema(
     },
     senderName: {
       type: String,
-      default: 'Harsh Kothari'
+      default: 'Varun'
     },
     designation: {
       type: String,
-      default: 'CEO & Founder'
+      default: 'Sales Executive'
     },
     // Brevo (Sendinblue) Email Settings
     brevoApiKey: {
@@ -37,7 +37,7 @@ const settingsSchema = new mongoose.Schema(
     },
     brevoSenderName: {
       type: String,
-      default: 'Harsh Kothari | Kevalon Technology'
+      default: 'Varun | Kevalon Technology'
     },
     brevoTemplateId: {
       type: Number,

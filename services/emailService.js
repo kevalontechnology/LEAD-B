@@ -101,10 +101,22 @@ const sendEmailMessage = async ({ leadId, customSubject, customBody, userId }) =
 
   const settings = await Settings.findOne();
 
+  // Determine sender name based on logged in user or Sales default
+  let defaultSalesName = 'Varun | Kevalon Technology';
+  if (userId) {
+    try {
+      const User = require('../models/User');
+      const senderUser = await User.findById(userId);
+      if (senderUser && senderUser.name) {
+        defaultSalesName = `${senderUser.name} | Kevalon Technology`;
+      }
+    } catch (e) {}
+  }
+
   // Brevo Parameters (from Settings DB or process.env)
   const brevoApiKey = settings?.brevoApiKey || process.env.BREVO_API_KEY;
   const brevoSenderEmail = settings?.brevoSenderEmail || process.env.BREVO_SENDER_EMAIL || settings?.email || 'sales@kevalontechnology.in';
-  const brevoSenderName = settings?.brevoSenderName || process.env.BREVO_SENDER_NAME || settings?.senderName || 'Harsh Kothari | Kevalon Technology';
+  const brevoSenderName = defaultSalesName || settings?.brevoSenderName || process.env.BREVO_SENDER_NAME || 'Varun | Kevalon Technology';
   const brevoTemplateId = Number(settings?.brevoTemplateId || process.env.BREVO_LEAD_TEMPLATE_ID || 0);
 
   // Secondary SMTP Parameters
